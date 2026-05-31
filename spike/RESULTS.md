@@ -27,7 +27,38 @@ relay compression (25 words), a weaker relay model, 3 hops. Licensed remediation
 lever, not a default. Honest headline: *loss appears under realistic compression
 pressure, not unconditionally.*
 
-## Four-condition probe (probe.py) — REAL, completed
+## Confidence-drop probe (probe.py, risk = flip + margin_drop) — REAL, completed
+
+Second run, after replacing the binary-only risk with a continuous term:
+`risk = answer_flip + (prev_margin - cur_margin)`, margin = top-2 A/B/C/D
+probability gap from the answerer's logprobs. n=15, same config.
+
+| condition | accuracy | avg interventions | avg tokens |
+|-----------|----------|-------------------|------------|
+| naive | 0.73 | 0.00 | 955 |
+| always_reground | 0.80 | 3.00 | 2935 |
+| **adaptive** | **0.73** | 1.40 | 1923 |
+| random_at_budget | 0.67 | 1.40 | 1915 |
+
+intervention rate **47%** (target 30%); threshold 0.117; 2 demo cases
+(race-1429, race-1508).
+
+**Directional verdict: the cost story did NOT hold this run.**
+- Intervention rate fell 69% → 47% (mechanism works directionally) but missed 30%.
+- Adaptive accuracy 0.73 = naive 0.73, below always 0.80: adaptive recovered
+  *none* of the naive→always gap. random 0.67 < adaptive 0.73 by ~1 item (weak).
+
+**Why (diagnostic, both are tomorrow's planned work):**
+1. **Ceiling too low.** naive→always is 0.73→0.80 ≈ 1 item at n=15 — almost no
+   fidelity to recover, so the cost story can't be shown here regardless of
+   signal. → tomorrow's RACE→QuALITY swap (longer passages, higher ceiling).
+2. **Answerer too overconfident to calibrate.** median margin_drop = 0.011;
+   21/45 hops have risk<0.05. gpt-4o-mini sits at ~0.99 confidence and only moves
+   on a real flip, so margin_drop is effectively bimodal, not smoothly tunable —
+   which is why the 30% quantile didn't transfer (47% observed). → read the
+   calibrated margin from the **relay model's** logprobs, not the answerer's.
+
+## (Earlier) binary-only probe (probe.py, risk = drift_delta + flip) — REAL, completed
 
 | condition | accuracy | avg interventions | avg tokens (proxy) |
 |-----------|----------|-------------------|--------------------|
@@ -45,8 +76,12 @@ pressure, not unconditionally.*
 3. adaptive uses fewer interventions than always (2.07 vs 3.00). ✅ *(modest)*
 4. ≥1 clean adaptive-fixes-naive case — found **2**. ✅
 
-**→ All four pass, so the rule says GREENLIGHT — but the margins are thin and
-two findings need fixing before the pitch (below). Treat as a qualified go.**
+All four rules passed on THIS run, but note the budget was untunable (69%) and
+the result did not reproduce under the tunable-risk version (see confidence-drop
+run above, where adaptive fell back to naive). Read the two runs together: the
+phenomenon and the signal's directional value are real, but the *cost story is
+not yet demonstrated*. Net = qualified, contingent on tomorrow's ceiling + relay-
+logprob fixes.
 
 ## Real demo cases (adaptive correct, naive wrong) — verbatim from demo_cases.jsonl
 1. **race-3165** — Q: "Which one is TRUE according to this article?"
@@ -76,12 +111,24 @@ two findings need fixing before the pitch (below). Treat as a qualified go.**
   lower cost, which is the good story, but with only 0.80 ceiling there's little
   headroom to show adaptive *approaching* a high always-bound.
 
-## For tomorrow's build
-- **Re-balance risk:** weight `answer_instability` explicitly and/or normalize
-  `drift_delta`; re-tune threshold to actually hit ~30% so adaptive is clearly
-  cheaper than always. This is the single highest-value fix.
-- **Raise the ceiling:** harder passages / more hops so always_reground > 0.9,
-  giving adaptive room to sit visibly between naive and always.
-- **n ≥ 40** for the submission to make adaptive-vs-random more than ~1 item.
-- Starting threshold for the sweep: well above 0.029 — sweep the cost/fidelity
-  frontier to produce the four-point scatter (the money graph).
+## For tomorrow's build (confirmed by both runs)
+1. **Raise the ceiling — RACE → QuALITY.** The blocker is naive→always ≈ 1 item.
+   Longer passages / higher ceiling give a real gap for adaptive to recover.
+   Without this, the cost story is undemonstrable at any n.
+2. **Read the calibrated margin from the RELAY model's logprobs, not the
+   answerer's.** gpt-4o-mini sits at ~0.99 confidence (median margin_drop 0.011,
+   bimodal), so its margin isn't smoothly tunable and the 30% quantile didn't
+   transfer (47% observed). The relay model is where information is actually lost,
+   so its own option-margin should be better-calibrated and continuous.
+3. **n ≥ 40** so adaptive-vs-random is more than ~1 item.
+4. **Swap relay off OpenAI onto a W&B Inference open model** (Llama-3.1-8B /
+   Phi-4-mini) and confirm degradation reproduces — submission runs on Inference.
+5. Sweep the threshold to draw the cost/fidelity frontier (the money graph) once
+   1+2 give it room.
+
+## Locked pitch (more defensible than the spec)
+"Strong single models barely lose anything — but under realistic cost pressure
+(short memos, cheap relay models, several hops) information degrades, and
+answer-instability is the live signal that catches it; embedding drift is
+near-inert at this scale." Scope the claim to that regime; lead the demo with the
+adaptive-fixes-naive cases.
