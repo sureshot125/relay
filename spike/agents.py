@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import re
 
-from llm import BIG_MODEL, SMALL_MODEL, chat
+from llm import BIG_MODEL, SMALL_MODEL, chat, chat_logprobs
 
 LETTERS = "ABCD"
 
@@ -67,6 +67,37 @@ def answerer(memo: str, question: str, choices: list[str], model: str = BIG_MODE
     )
     out = chat(sys, usr, model=model, temperature=0.0, max_tokens=4)
     return _parse_letter(out)
+
+
+def answerer_conf(memo: str, question: str, choices: list[str],
+                  model: str = BIG_MODEL) -> tuple[int, float]:
+    """Shadow answerer with calibrated confidence.
+
+    Returns (choice 0..3, margin) where margin = p(top) - p(2nd) over the A/B/C/D
+    option tokens, read from the model's own logprobs. A small margin means the
+    answerer is nearly indifferent between two options -> a near-flip the binary
+    flip signal would miss. This continuous quantity is what makes risk tunable
+    to an arbitrary intervention budget.
+    """
+    sys = (
+        "Answer the multiple-choice question using ONLY the memo. Reply with a "
+        "single letter A, B, C, or D and nothing else."
+    )
+    usr = (
+        f"MEMO:\n{memo}\n\nQUESTION: {question}\nCHOICES:\n{_format_choices(choices)}\n\n"
+        "Answer (one letter):"
+    )
+    text, probs = chat_logprobs(sys, usr, model=model)
+    opt = {L: probs.get(L, 0.0) for L in LETTERS}
+    total = sum(opt.values())
+    if total > 0:
+        opt = {k: v / total for k, v in opt.items()}  # renormalize over A-D
+    ordered = sorted(opt.values(), reverse=True)
+    margin = float(ordered[0] - ordered[1]) if len(ordered) >= 2 else float(ordered[0])
+    choice = _parse_letter(text) if text else max(opt, key=opt.get)
+    if isinstance(choice, int):
+        return choice, margin
+    return LETTERS.index(choice), margin
 
 
 def reground(memo: str, question: str, choices: list[str], chunks: list[str],

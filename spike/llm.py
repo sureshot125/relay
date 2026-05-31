@@ -72,6 +72,55 @@ def chat(
     raise RuntimeError(f"chat failed after retries: {last_err}")
 
 
+def chat_logprobs(
+    system: str,
+    user: str,
+    model: str | None = None,
+    top_logprobs: int = 8,
+    max_retries: int = 6,
+) -> tuple[str, dict[str, float]]:
+    """One-token completion with logprobs. Returns (text, {token: prob}).
+
+    Used to read the answerer's calibrated confidence over A/B/C/D from the
+    model's own distribution, rather than self-reported confidence.
+    """
+    import math
+
+    model = model or BIG_MODEL
+    delay = 2.0
+    last_err: Exception | None = None
+    for _ in range(max_retries):
+        try:
+            resp = client().chat.completions.create(
+                model=model,
+                temperature=0.0,
+                max_tokens=1,
+                logprobs=True,
+                top_logprobs=top_logprobs,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+            choice = resp.choices[0]
+            text = (choice.message.content or "").strip()
+            probs: dict[str, float] = {}
+            lp = choice.logprobs
+            if lp and lp.content:
+                for alt in lp.content[0].top_logprobs:
+                    probs[alt.token.strip().upper()] = math.exp(alt.logprob)
+            return text, probs
+        except Exception as e:
+            last_err = e
+            msg = str(e).lower()
+            if "429" in msg or "rate" in msg or "overload" in msg or "timeout" in msg:
+                time.sleep(delay)
+                delay = min(delay * 2, 32)
+                continue
+            raise
+    raise RuntimeError(f"chat_logprobs failed after retries: {last_err}")
+
+
 def token_proxy(*texts: str) -> int:
     """Crude cost unit: ~word count of everything sent+received."""
     return sum(len(t.split()) for t in texts)

@@ -73,9 +73,17 @@ class Retriever:
         return 1.0 - _cos(mv, question_centroid)
 
 
-def risk(drift_delta: float, answer_instability: int) -> float:
-    """Transparent combination. drift_delta can be negative (memo got closer)."""
-    return float(drift_delta) + float(answer_instability)
+def risk(margin_drop: float, answer_flip: int) -> float:
+    """risk = answer_flip + (prev_margin - cur_margin).
+
+    The flip term is binary (so flips always rank above non-flips), but the
+    margin-drop term is CONTINUOUS, which is what makes risk thresholdable to an
+    arbitrary intervention budget. It also catches the "answer didn't flip but
+    confidence cratered" near-flip that the pure flip signal misses.
+    Embedding drift is logged for comparison but deliberately NOT in risk: it was
+    near-inert at this scale (see RESULTS.md).
+    """
+    return float(answer_flip) + float(margin_drop)
 
 
 if __name__ == "__main__":

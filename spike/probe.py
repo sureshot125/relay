@@ -29,7 +29,7 @@ import random
 
 import numpy as np
 
-from agents import answerer, explainer, reground, relay
+from agents import answerer, answerer_conf, explainer, reground, relay
 from data import Item, load_items
 from llm import BIG_MODEL, token_proxy
 from selection import passage_dependent
@@ -51,15 +51,16 @@ def run_chain(item: Item, retr: Retriever, chunks, centroid, *, mode: str,
     m = explainer(item.source, item.question, item.choices)
     tok += token_proxy(item.source, item.question, *item.choices, m)
     prev_drift = retr.drift(m, centroid)
-    prev_shadow = answerer(m, item.question, item.choices)
+    prev_shadow, prev_margin = answerer_conf(m, item.question, item.choices)
     tok += token_proxy(m, item.question, *item.choices)
 
     n_int = 0
     hop_records = []
     log.append(dict(item_id=item.item_id, condition=condition, hop=0, memo=m,
                     drift=prev_drift, drift_delta=0.0, shadow_answer="ABCD"[prev_shadow],
-                    answer_changed=0, risk=0.0, intervened=0, final_answer=None,
-                    gold=item.gold_letter, correct=None, token_proxy=tok))
+                    margin=prev_margin, margin_drop=0.0, answer_changed=0, risk=0.0,
+                    intervened=0, final_answer=None, gold=item.gold_letter,
+                    correct=None, token_proxy=tok))
 
     memo = m
     for hop in RELAY_HOPS:
@@ -67,10 +68,11 @@ def run_chain(item: Item, retr: Retriever, chunks, centroid, *, mode: str,
         tok += token_proxy(memo, item.question, *item.choices, small)
         d = retr.drift(small, centroid)
         dd = d - prev_drift
-        shadow = answerer(small, item.question, item.choices)
+        shadow, margin = answerer_conf(small, item.question, item.choices)
         tok += token_proxy(small, item.question, *item.choices)
         changed = int(shadow != prev_shadow)
-        r = risk_fn(dd, changed)
+        margin_drop = prev_margin - margin            # continuous, can be negative
+        r = risk_fn(margin_drop, changed)
 
         intervene = False
         if mode == "always":
@@ -87,16 +89,16 @@ def run_chain(item: Item, retr: Retriever, chunks, centroid, *, mode: str,
             n_int += 1
             # refresh signals on the repaired memo
             d = retr.drift(small, centroid)
-            shadow = answerer(small, item.question, item.choices)
+            shadow, margin = answerer_conf(small, item.question, item.choices)
             tok += token_proxy(small, item.question, *item.choices)
 
         log.append(dict(item_id=item.item_id, condition=condition, hop=hop, memo=small,
                         drift=d, drift_delta=dd, shadow_answer="ABCD"[shadow],
-                        answer_changed=changed, risk=r, intervened=int(intervene),
-                        final_answer=None, gold=item.gold_letter, correct=None,
-                        token_proxy=tok))
+                        margin=margin, margin_drop=margin_drop, answer_changed=changed,
+                        risk=r, intervened=int(intervene), final_answer=None,
+                        gold=item.gold_letter, correct=None, token_proxy=tok))
         hop_records.append(dict(hop=hop, risk=r))
-        prev_drift, prev_shadow, memo = d, shadow, small
+        prev_drift, prev_shadow, prev_margin, memo = d, shadow, margin, small
 
     final = answerer(memo, item.question, item.choices)
     tok += token_proxy(memo, item.question, *item.choices)
