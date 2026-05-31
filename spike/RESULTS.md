@@ -48,11 +48,12 @@ pressure, not unconditionally.*
 **→ All four pass, so the rule says GREENLIGHT — but the margins are thin and
 two findings need fixing before the pitch (below). Treat as a qualified go.**
 
-## Real demo cases (adaptive correct, naive wrong)
-1. **race-1760** — Q: "Mike could use the following except ___ to take photos."
-   Gold **D** (a printer). naive → **C** (a player) ✗ ; adaptive → **D** ✓
-2. **race-2086** — Q: "What can we infer from the passage?"
-   Gold **B** (disappearance of MH370 is still a mystery). naive → **C** ✗ ;
+## Real demo cases (adaptive correct, naive wrong) — verbatim from demo_cases.jsonl
+1. **race-3165** — Q: "Which one is TRUE according to this article?"
+   Gold **B** ("Yang says he can chat freely with many friends and relax on QQ").
+   naive → **C** ✗ ; adaptive → **B** ✓
+2. **race-1508** — Q: "What does the writer think of picking a lunch box?"
+   Gold **B** ("It is rather hard"). naive → **D** ("It seems special") ✗ ;
    adaptive → **B** ✓
 
 ## Weakest parts (say these out loud)
