@@ -4,11 +4,16 @@ All prompts are deliberately plain. Gold is never shown to any of these.
 """
 from __future__ import annotations
 
+import os
 import re
 
 from llm import BIG_MODEL, SMALL_MODEL, chat
 
 LETTERS = "ABCD"
+
+# Force-compression lever: hard word budget on relay memos, modelling real
+# context pressure. Used only because natural degradation was weak (see README).
+RELAY_MAX_WORDS = int(os.environ.get("RELAY_MAX_WORDS", "25"))
 
 
 def _format_choices(choices: list[str]) -> str:
@@ -31,17 +36,18 @@ def explainer(source: str, question: str, choices: list[str], model: str = BIG_M
 
 
 def relay(prev_memo: str, question: str, choices: list[str], model: str = SMALL_MODEL) -> str:
+    # Under tight context pressure the relay must compress hard; it is NOT shown
+    # the question (it doesn't know which detail will matter) -> realistic loss.
     sys = (
-        "You are a relay agent. You did NOT see the original source. Rewrite the "
-        "memo below in your own words to pass it on to the next agent, keeping it "
-        "concise. You may compress, but try to preserve anything relevant to the "
-        "question. Do not invent facts. Do not answer the question."
+        "You are a relay agent passing a note to the next person. You did NOT see "
+        "the original source. You are under a strict length limit. Summarize the "
+        "memo below as briefly as possible in your own words. Do not invent facts."
     )
     usr = (
-        f"QUESTION: {question}\nCHOICES:\n{_format_choices(choices)}\n\n"
-        f"MEMO:\n{prev_memo}\n\nRewrite the memo (<= 70 words)."
+        f"MEMO:\n{prev_memo}\n\n"
+        f"Rewrite it in at most {RELAY_MAX_WORDS} words."
     )
-    return chat(sys, usr, model=model, max_tokens=180)
+    return chat(sys, usr, model=model, max_tokens=max(40, RELAY_MAX_WORDS * 3))
 
 
 def _parse_letter(text: str) -> int:

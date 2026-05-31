@@ -167,8 +167,8 @@ def _embedded() -> list[Item]:
 def load_items(
     n: int = 18,
     seed: int = 13,
-    min_words: int = 180,
-    max_words: int = 450,
+    min_words: int = 250,
+    max_words: int = 600,
 ) -> list[Item]:
     """Try RACE; on any failure fall back to the embedded set."""
     try:

@@ -32,9 +32,10 @@ import numpy as np
 from agents import answerer, explainer, reground, relay
 from data import Item, load_items
 from llm import BIG_MODEL, token_proxy
+from selection import passage_dependent
 from signals import Retriever, risk as risk_fn
 
-RELAY_HOPS = (1, 2)  # memo indices where intervention may occur
+RELAY_HOPS = (1, 2, 3)  # memo indices where intervention may occur
 
 
 def run_chain(item: Item, retr: Retriever, chunks, centroid, *, mode: str,
@@ -106,12 +107,15 @@ def run_chain(item: Item, retr: Retriever, chunks, centroid, *, mode: str,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-n", type=int, default=18)
+    ap.add_argument("-n", type=int, default=15, help="target selected items")
+    ap.add_argument("--pool", type=int, default=80)
     ap.add_argument("--target-rate", type=float, default=0.30)
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
 
-    items = load_items(n=args.n)
+    pool = load_items(n=args.pool)
+    print(f"[probe] scanning {len(pool)} candidates for passage-dependent items...")
+    items = passage_dependent(pool, n=args.n)
     retrievers = {}
     chunkcache = {}
     for it in items:
